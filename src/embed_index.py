@@ -439,7 +439,10 @@ def load_dense_components(
                 raw = json.load(f)
             # raw may be a list of ints; convert to string keys
             if isinstance(raw, list):
-                id_map = {str(i): int(i) for i in raw}
+                # Map the FAISS row index (list position) to the corresponding item_id
+                # Use enumerate instead of identity mapping; this fixes the bug where
+                # the mapping incorrectly used the ID as both key and value.
+                id_map = {str(i): int(v) for i, v in enumerate(raw)}
             elif isinstance(raw, dict):
                 id_map = {str(k): int(v) for k, v in raw.items()}
         except Exception as e:

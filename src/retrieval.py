@@ -68,11 +68,11 @@ from .embed_index import (
     embed_query_with_chunking,
 )
 
-# Explicit fusion weights for reproducibility.  Adjusted to reduce
-# lexical dominance and increase semantic influence based on offline
-# evaluation.  These values override config.BM25_WEIGHT / DENSE_WEIGHT.
-BM25_WEIGHT = 0.60  # emphasise lexical precision to anchor job-role keywords
-DENSE_WEIGHT = 0.40  # reduce semantic dominance
+# Fusion weights imported from config.  Adjust these values in
+# config.py (BM25_WEIGHT, DENSE_WEIGHT) to tune lexical vs semantic
+# influence without editing this module.  These defaults aim for a
+# balanced hybrid retrieval.  See config.py for current values.
+from .config import BM25_WEIGHT, DENSE_WEIGHT  # BM25_WEIGHT ~0.5, DENSE_WEIGHT ~0.5
 
 
 def _winsorize(arr: np.ndarray, lo: float, hi: float) -> np.ndarray:

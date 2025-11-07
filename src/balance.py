@@ -103,7 +103,7 @@ def allocate(
     ):
         k_target, p_target = (7, 3) if pt > pb else (3, 7)
     else:
-        k_target, p_target = (target_size, 0) if pt >= pb else (0, target_size)
+        k_target = p_target = target_size // 2
     logger.info(
         "Alloc targets: k_target=%d, p_target=%d, (pt=%.2f, pb=%.2f)",
         k_target,

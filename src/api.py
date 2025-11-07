@@ -40,13 +40,155 @@ except Exception:
     logger = _FallbackLogger(logging.getLogger(__name__))
 from pydantic import BaseModel, Field
 
-from .config import RESULT_MAX
+from .config import (
+    RESULT_MAX,
+    INTENT_LABEL_TECHNICAL,
+    INTENT_LABEL_PERSONALITY,
+    INTENT_LABELS,
+    ZERO_SHOT_MODEL,
+)
+
+try:
+    # transformers is optional; fall back gracefully if unavailable
+    from transformers import pipeline  # type: ignore
+except Exception:
+    pipeline = None
 from .catalog_build import load_catalog_snapshot
 from .retrieval import retrieve_candidates
 from .rerank import rerank_candidates
 from .mmr import load_item_embeddings, mmr_select
 from .balance import allocate
 from .mapping import map_items_to_response
+from .jd_fetch import fetch_and_extract
+
+import re
+import pandas as pd
+
+# Public pipeline entrypoint for evaluation and tests.  This function
+# encapsulates the entire recommendation pipeline without any web
+# framework dependencies.  It accepts the raw query string, a catalog
+# DataFrame, and an intent classifier (or None).  It returns a
+# RecommendResponse with recommended items.  When an intent classifier
+# is provided, it will run zero-shot classification to compute the
+# probabilities of technical vs behavioural intents; otherwise
+# default probabilities are used.
+from .config import RecommendResponse
+
+def run_full_pipeline(
+    query: str,
+    catalog_df: pd.DataFrame,
+    intent_model: object | None = None,
+) -> RecommendResponse:
+    """Runs the full RAG pipeline from query to response object.
+
+    The ``query`` may be a free-form string or a URL.  If a URL is
+    detected, the job description text is fetched via ``fetch_and_extract``.
+    The pipeline performs retrieval, reranking, heuristic adjustments,
+    diversification, intent-based allocation, dynamic cutoff, and
+    category diversity enforcement.  The final list of IDs is mapped
+    to API items via :func:`map_items_to_response`.
+    """
+    # If query appears to be a URL, fetch the job description text.
+    if re.match(r"^https?://", query.strip(), re.IGNORECASE):
+        logger.info("Query is a URL. Fetching content from: {}", query)
+        fetched_text = fetch_and_extract(query)
+        if not fetched_text:
+            logger.warning("Failed to fetch or extract text from URL.")
+            # Return empty response when no content can be extracted
+            return RecommendResponse(recommended_assessments=[])
+        query = fetched_text
+    # Empty query after stripping is invalid
+    if not query or not query.strip():
+        return RecommendResponse(recommended_assessments=[])
+    # Retrieval
+    raw_query, cleaned_query, fused = retrieve_candidates(query)
+    # Rerank
+    ranked = rerank_candidates(cleaned_query, fused)
+    # Domain filtering heuristics
+    ranked = _filter_domain_candidates(cleaned_query, ranked, catalog_df)
+    # Downrank generic items
+    ranked = _apply_generic_penalty(ranked, catalog_df)
+    # Post-rank heuristic adjustments (duration/name/language/entry-level etc.)
+    ranked = _post_rank_adjustments(ranked, cleaned_query, catalog_df)
+    # Category balance based on query intent categories
+    ranked = _apply_category_balance(ranked, cleaned_query, catalog_df)
+    # Drop purely technical items if behavioural or aptitude cues are present
+    # ranked = _apply_category_filter(ranked, cleaned_query, catalog_df)
+    # Diversify with MMR
+    embeddings, ids = load_item_embeddings()
+    mmr_ids = mmr_select(
+        candidates=[(c.item_id, c.rerank_score) for c in ranked],
+        embeddings=embeddings,
+        ids=ids,
+        k=RESULT_MAX,
+        lambda_=0.7,
+    )
+    # Intent classification using zero-shot model if available
+    if intent_model is not None:
+        try:
+            intent_labels = [INTENT_LABEL_TECHNICAL, INTENT_LABEL_PERSONALITY]
+            intent_result = intent_model(cleaned_query, intent_labels, multi_label=False)
+            score_map = {
+                label: score
+                for label, score in zip(intent_result["labels"], intent_result["scores"])
+            }
+            pt = float(score_map.get(INTENT_LABEL_TECHNICAL, 0.5))
+            pb = float(score_map.get(INTENT_LABEL_PERSONALITY, 0.5))
+            logger.info(
+                "Intent scores: technical={:.2f}, behavior={:.2f}", pt, pb
+            )
+        except Exception as e:
+            logger.warning("Intent classification failed: {}", e)
+            pt = pb = 0.5
+    else:
+        pt = pb = 0.5
+    # Build class map for allocator
+    classes: dict[int, List[str]] = {}
+    for iid in mmr_ids:
+        row = catalog_df.loc[iid]
+        raw_types = row.get("test_type")
+        # Normalise test_type into a list of strings
+        types_list: List[str] = []
+        if raw_types is None or (
+            isinstance(raw_types, float) and (raw_types != raw_types)
+        ):
+            types_list = []
+        elif isinstance(raw_types, str):
+            cleaned = raw_types.replace("[", "").replace("]", "").replace("'", "")
+            types_list = [t.strip() for t in cleaned.split(",") if t.strip()]
+        elif isinstance(raw_types, (list, tuple)):
+            types_list = [str(t).strip() for t in raw_types if str(t).strip()]
+        else:
+            try:
+                types_list = [str(t).strip() for t in list(raw_types) if str(t).strip()]
+            except Exception:
+                if raw_types is not None and not (
+                    isinstance(raw_types, float) and (raw_types != raw_types)
+                ):
+                    types_list = [str(raw_types).strip()]
+                else:
+                    types_list = []
+        classes[iid] = types_list
+    # Allocate final IDs based on K/P intent scores
+    final_ids = allocate(
+        mmr_ids,
+        classes,
+        RESULT_MAX,
+        pt=pt,
+        pb=pb,
+        catalog_df=catalog_df,
+    )
+    # Build score lookup for dynamic cutoff
+    score_lookup = {c.item_id: c.rerank_score for c in ranked}
+    # Apply dynamic cutoff and ensure at least two categories
+    final_ids = _apply_dynamic_cutoff(final_ids, score_lookup)
+    final_ids = _ensure_min_category_diversity(final_ids, ranked, catalog_df, min_categories=2)
+    # Map final IDs to response
+    response = map_items_to_response(final_ids, catalog_df)
+    # Trim to RESULT_MAX (safety)
+    if len(response.recommended_assessments) > RESULT_MAX:
+        response.recommended_assessments = response.recommended_assessments[:RESULT_MAX]
+    return response
 
 
 # -----------------------------------------------------------------------------
@@ -73,7 +215,9 @@ _TECH_ALLOWED_TYPES = {"Knowledge & Skills", "Ability & Aptitude"}
 # Generic item name substrings to penalize.  These items often appear
 # across diverse queries and are less specific to the query intent.
 _GENERIC_PATTERNS = [
-    "ai skills", "360", "verify", "inductive reasoning", "360 feedback",
+    # Removed "ai skills" because it is often a relevant result.
+    "multitasking ability",  # This item is overly generic and often irrelevant.
+    "360", "verify", "inductive reasoning", "360 feedback",
 ]
 
 # Additional language codes considered non‑English for filtering.  When a
@@ -110,6 +254,22 @@ _DOMAIN_KEYWORDS = [
 _AI_KEYWORDS = [
     "artificial intelligence", "ai", "machine learning", "ml", "deep learning",
     "data science", "neural network", "computer vision", "nlp", "natural language",
+]
+
+# Keywords to detect Python-specific queries and match Python-related
+# assessments.  A strong boost is applied when both the query and
+# candidate mention these.
+_PYTHON_KEYWORDS = [
+    "python", "django", "flask", "pandas", "numpy", "data structures",
+    "machine learning", "data analysis", "tensorflow", "pytorch",
+]
+
+# Keywords to detect analytics/business intelligence queries and match
+# analytics assessments (e.g. Excel, Tableau).  These help surface
+# spreadsheet and reporting skills when the query mentions them.
+_ANALYTICS_KEYWORDS = [
+    "excel", "tableau", "power bi", "visualization", "visualisation", "data viz",
+    "reporting", "storytelling", "analytics", "data analytics", "business intelligence",
 ]
 
 # Additional domain keyword groups for focused query matching.  These
@@ -294,6 +454,21 @@ def _post_rank_adjustments(
             else:
                 score -= 0.05
 
+        # Python-specific boosting.  If the query mentions Python-related
+        # keywords and the candidate does too, apply a strong boost.  This
+        # helps surface Python assessments for developer roles.
+        if any(kw in q_lower for kw in _PYTHON_KEYWORDS):
+            name_desc_py = (name + " " + desc).lower()
+            if any(kw in name_desc_py for kw in _PYTHON_KEYWORDS):
+                score += 0.10
+
+        # Analytics/BI boosting.  When the query mentions analytics or BI
+        # related keywords, boost candidates that also mention them.
+        if any(kw in q_lower for kw in _ANALYTICS_KEYWORDS):
+            name_desc_an = (name + " " + desc).lower()
+            if any(kw in name_desc_an for kw in _ANALYTICS_KEYWORDS):
+                score += 0.10
+
         # Generic domain focus boosting and penalty
         # Detect dominant domain(s) in the query (excluding AI/ML which is handled above)
         query_domains: set[str] = set()
@@ -325,13 +500,10 @@ def _post_rank_adjustments(
                     score -= 0.05
                     break
         adjusted.append(type(c)(item_id=c.item_id, fused_score=c.fused_score, rerank_score=score))
-    # Sort adjusted list by score desc then id
-    # Tie-break by shorter duration, then shorter name length, then item ID
+    # Sort adjusted list by descending score and then item id for deterministic ordering
     adjusted.sort(
         key=lambda c: (
             -float(c.rerank_score),
-            catalog_df.loc[c.item_id].get("duration", 0) if c.item_id in catalog_df.index else 0,
-            len(str(catalog_df.loc[c.item_id].get("name", ""))) if c.item_id in catalog_df.index else 0,
             c.item_id,
         )
     )
@@ -600,6 +772,9 @@ app.add_middleware(
 # Cache catalog snapshot in process to avoid repeated disk I/O
 _catalog_df = None  # type: ignore
 
+# Global intent classifier object; loaded at startup
+intent_classifier = None
+
 
 @app.on_event("startup")
 def startup_event() -> None:
@@ -618,6 +793,20 @@ def startup_event() -> None:
         logger.warning("Warmup partial failure: {}", e)
     logger.info("Warmup complete.")
 
+    # Load the zero-shot intent classifier if possible
+    global intent_classifier
+    if pipeline is not None:
+        try:
+            intent_classifier = pipeline(
+                "zero-shot-classification", model=ZERO_SHOT_MODEL
+            )  # type: ignore
+            logger.info("Loaded zero-shot intent classifier with model {}", ZERO_SHOT_MODEL)
+        except Exception as e:
+            intent_classifier = None
+            logger.warning("Failed to load zero-shot classifier: {}", e)
+    else:
+        intent_classifier = None
+
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
@@ -630,87 +819,10 @@ def recommend(req: QueryRequest):
     """Endpoint to get assessment recommendations for a query."""
     query = req.query.strip()
     if not query:
-        raise HTTPException(status_code=422, detail="Query must be non‑empty")
-    raw_query, cleaned_query, fused = retrieve_candidates(query)
-    ranked = rerank_candidates(cleaned_query, fused)
-    # Apply domain filtering heuristics
-    ranked = _filter_domain_candidates(cleaned_query, ranked, _catalog_df)
-    # Downrank generic items
-    ranked = _apply_generic_penalty(ranked, _catalog_df)
-    # Apply post‑rank heuristic adjustments (duration/name/language/entry-level)
-    ranked = _post_rank_adjustments(ranked, cleaned_query, _catalog_df)
-    # Apply category balance to ensure representation of all intent categories
-    ranked = _apply_category_balance(ranked, cleaned_query, _catalog_df)
-    # Drop purely technical items when behavioural or aptitude cues present
-    ranked = _apply_category_filter(ranked, cleaned_query, _catalog_df)
-    # Diversify with MMR
-    embeddings, ids = load_item_embeddings()
-    mmr_ids = mmr_select(
-        candidates=[(c.item_id, c.rerank_score) for c in ranked],
-        embeddings=embeddings,
-        ids=ids,
-        k=RESULT_MAX,
-        lambda_=0.7,
-    )
-    # Detect intent (K vs P) and allocate.  Here we stub out the intent
-    # classifier probabilities with uniform values (pt=pb=0.5) since the
-    # zero‑shot model is not loaded in this environment.  Replace with
-    # real intent scores if available.
-    pt = pb = 0.5
-    # Log the deny substrings configured in balance.py.  Use a direct f-string
-    # rather than brace formatting to avoid confusion with our fallback logger.
-    from .balance import DENY_SUBSTR
-    logger.info(f"Domain deny substrings: {DENY_SUBSTR}")
-    # Build class map for allocator from the snapshot
-    classes: dict[int, List[str]] = {}
-    for iid in mmr_ids:
-        row = _catalog_df.loc[iid]
-        raw_types = row.get("test_type")
-        types_list: List[str] = []
-        # Normalise the test_type field into a list of strings without relying on truthiness
-        try:
-            import numpy as _np  # local import to avoid global dependency
-        except Exception:
-            _np = None  # type: ignore
-        # Determine emptiness without using pandas.isna to avoid elementwise ambiguity
-        if raw_types is None or (
-            isinstance(raw_types, float) and (raw_types != raw_types)
-        ):
-            types_list = []
-        elif isinstance(raw_types, str):
-            cleaned = raw_types.replace("[", "").replace("]", "").replace("'", "")
-            types_list = [t.strip() for t in cleaned.split(",") if t.strip()]
-        elif isinstance(raw_types, (list, tuple)):
-            types_list = [str(t).strip() for t in raw_types if str(t).strip()]
-        else:
-            # Try to coerce other iterables (e.g. numpy array) to list
-            try:
-                types_list = [str(t).strip() for t in list(raw_types) if str(t).strip()]
-            except Exception:
-                # Fallback: if raw_types isn't iterable, coerce to string unless NaN
-                if raw_types is not None and not (
-                    isinstance(raw_types, float) and (raw_types != raw_types)
-                ):
-                    types_list = [str(raw_types).strip()]
-                else:
-                    types_list = []
-        classes[iid] = types_list
-    final_ids = allocate(
-        mmr_ids,
-        classes,
-        RESULT_MAX,
-        pt=pt,
-        pb=pb,
-        catalog_df=_catalog_df,
-    )
-    # Build score lookup for dynamic cutoff
-    score_lookup = {c.item_id: c.rerank_score for c in ranked}
-    # Apply dynamic cutoff to final_ids based on normalized scores
-    final_ids = _apply_dynamic_cutoff(final_ids, score_lookup)
-    # Ensure we have at least two distinct categories represented
-    final_ids = _ensure_min_category_diversity(final_ids, ranked, _catalog_df, min_categories=2)
-    response = map_items_to_response(final_ids, _catalog_df)
-    # If more than 10 items remain after cutoff/balancing, trim to RESULT_MAX
-    if len(response.recommended_assessments) > RESULT_MAX:
-        response.recommended_assessments = response.recommended_assessments[:RESULT_MAX]
+        raise HTTPException(status_code=422, detail="Query must be non-empty")
+    # Ensure catalog is loaded
+    if _catalog_df is None:
+        raise HTTPException(status_code=500, detail="Catalog not loaded")
+    # Run the full pipeline with the loaded catalog and intent classifier
+    response = run_full_pipeline(query, _catalog_df, intent_classifier)
     return response

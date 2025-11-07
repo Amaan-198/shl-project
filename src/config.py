@@ -84,8 +84,10 @@ FUSION_TOP_K = 60         # top‑K candidates retained after score fusion
 
 # Relative weight of BM25 vs dense scores.  These values are chosen
 # empirically to slightly favor BM25 for precision on short queries.
-BM25_WEIGHT = 0.60
-DENSE_WEIGHT = 0.40
+# Default fusion weights for retrieval.  A balanced split of 0.45/0.55 is
+# recommended to slightly favour dense semantic retrieval over lexical BM25.
+BM25_WEIGHT = 0.45
+DENSE_WEIGHT = 0.55
 
 # Winsorization for fusion scores.  We clip scores into a narrow
 # range before computing z‑scores, which prevents extreme values
