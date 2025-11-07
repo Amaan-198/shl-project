@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""
+Text normalization utilities used across the SHL recommender project.
+
+These helpers perform basic cleaning (HTML stripping, unicode
+normalization, whitespace collapsing), lexical tokenization for
+BM25 indexing, and synonym expansion.  Keeping normalization logic
+centralized here ensures consistent treatment of user queries and
+catalog content.
+"""
+
 import re
 import unicodedata
 from typing import Iterable, List
@@ -15,7 +25,8 @@ from .config import MAX_INPUT_CHARS, SYNONYM_MAP
 
 def clamp_text_length(text: str, max_chars: int = MAX_INPUT_CHARS) -> str:
     """
-    Hard cap on input size so we don't accidentally feed huge strings into models.
+    Hard cap on input size so we don't accidentally feed huge strings
+    into models.
     """
     if not isinstance(text, str):
         text = str(text)
@@ -27,7 +38,8 @@ def clamp_text_length(text: str, max_chars: int = MAX_INPUT_CHARS) -> str:
 def strip_html(raw: str) -> str:
     """
     Strip HTML tags using BeautifulSoup, then clean up whitespace and
-    spacing around punctuation.
+    spacing around punctuation.  If parsing fails, the input is
+    returned unchanged to fail open rather than drop text.
     """
     if not raw:
         return ""
@@ -50,13 +62,12 @@ def strip_html(raw: str) -> str:
 
 def normalize_unicode(text: str) -> str:
     """
-    Normalize weird unicode (fancy quotes, etc.) into a more stable form.
+    Normalize weird unicode (fancy quotes, etc.) into a more stable
+    form.  Using NFC keeps things mostly intact but canonicalized.
     """
     if not text:
         return ""
-    # NFC keeps things mostly intact but canonicalized
-    text = unicodedata.normalize("NFC", text)
-    return text
+    return unicodedata.normalize("NFC", text)
 
 
 def normalize_whitespace(text: str) -> str:
@@ -78,8 +89,9 @@ WORD_SPLIT_RE = re.compile(r"[^\w#+]+")
 
 def simple_tokenize(text: str) -> List[str]:
     """
-    Simple, fast tokenization for BM25 / lexical use.
-    Lowercase + split on non-word separators, keep C#, C++ etc roughly intact.
+    Simple, fast tokenization for BM25 / lexical use.  Lowercase and
+    split on non-word separators, keeping C#, C++ etc roughly intact.
+    Returns a list of tokens with empty strings removed.
     """
     if not text:
         return []
@@ -90,10 +102,9 @@ def simple_tokenize(text: str) -> List[str]:
 
 def apply_synonyms(tokens: Iterable[str]) -> List[str]:
     """
-    Apply a small, deterministic synonym map.
-    E.g. 'js' -> 'javascript', 'node.js' -> 'nodejs', etc.
-
-    If a synonym expands to multiple words, we split them and inline.
+    Apply a small, deterministic synonym map.  E.g. 'js' ->
+    'javascript', 'node.js' -> 'nodejs', etc.  If a synonym expands to
+    multiple words, we split them and inline into the token list.
     """
     normalized: List[str] = []
     for tok in tokens:
@@ -116,7 +127,9 @@ def apply_synonyms(tokens: Iterable[str]) -> List[str]:
 
 def basic_clean(text: str) -> str:
     """
-    End-to-end basic cleaning used for both catalog content and queries:
+    End-to-end basic cleaning used for both catalog content and
+    queries:
+
     - clamp length
     - strip HTML
     - normalize unicode
@@ -124,7 +137,6 @@ def basic_clean(text: str) -> str:
     """
     if text is None:
         return ""
-
     text = clamp_text_length(str(text))
     text = strip_html(text)
     text = normalize_unicode(text)
@@ -151,16 +163,17 @@ def normalize_query(text: str) -> str:
     """
     Dedicated pipeline for user queries.
 
-    For now it's identical to normalize_for_lexical_index but split out so
-    we can tweak behavior for queries later (e.g., special handling of
-    question marks, leading phrases, etc.).
+    For now it's identical to normalize_for_lexical_index but split
+    out so we can tweak behavior for queries later (e.g., special
+    handling of question marks, leading phrases, etc.).
     """
     return normalize_for_lexical_index(text)
 
 
 def lexical_tokens_for_bm25(text: str) -> List[str]:
     """
-    Return the token list specifically for BM25, after cleaning and synonyms.
+    Return the token list specifically for BM25, after cleaning and
+    synonyms.  This simply splits the normalized string on spaces.
     """
     normalized = normalize_for_lexical_index(text)
     if not normalized:
@@ -173,7 +186,10 @@ def lexical_tokens_for_bm25(text: str) -> List[str]:
 # ---------------------------
 
 if __name__ == "__main__":
-    # Tiny manual debug helper
+    # Tiny manual debug helper.  Running this module directly will
+    # demonstrate what the normalizers do on a sample string.  This
+    # section is intentionally kept trivial so it doesn't interfere
+    # with the primary function of the module.
     sample = "Senior JS/TS Engineer (Node.js) – strong AI/ML, stakeholder mgmt.<br>Remote-friendly."
     print("RAW:", sample)
     print("BASIC CLEAN:", basic_clean(sample))

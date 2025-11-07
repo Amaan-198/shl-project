@@ -1,18 +1,50 @@
 from __future__ import annotations
 
+"""
+Utilities to normalise and construct catalog snapshots from raw data.
+
+This module accepts raw Excel files provided by SHL, attempts to map
+arbitrary column names to a canonical schema, cleans and normalises
+fields and writes the resulting DataFrame to a Parquet snapshot.
+The snapshot can later be loaded by other components such as the
+retrieval pipeline.
+"""
+
 import re
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 import pandas as pd
-from loguru import logger
+try:
+    from loguru import logger  # type: ignore
+except Exception:
+    import logging
+    logging.basicConfig(level=logging.INFO)
+
+    class _FallbackLogger:
+        def __init__(self, logger):
+            self._logger = logger
+
+        def info(self, msg: str, *args, **kwargs) -> None:
+            self._logger.info(msg.format(*args))
+
+        def warning(self, msg: str, *args, **kwargs) -> None:
+            self._logger.warning(msg.format(*args))
+
+        def error(self, msg: str, *args, **kwargs) -> None:
+            self._logger.error(msg.format(*args))
+
+        def exception(self, msg: str, *args, **kwargs) -> None:
+            self._logger.exception(msg.format(*args))
+
+    logger = _FallbackLogger(logging.getLogger(__name__))
 
 from .config import CATALOG_RAW_DIR, CATALOG_SNAPSHOT_PATH
 from .normalize import basic_clean
 
 
 # ---------------------------
-# Column detection / standardization
+# Column detection / standardisation
 # ---------------------------
 
 # We don't know the exact XLSX schema, so we support multiple likely variants.
@@ -75,7 +107,7 @@ COLUMN_CANDIDATES: Dict[str, List[str]] = {
 }
 
 
-def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+def _standardise_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
     Rename columns from the raw catalog to a canonical internal schema.
 
@@ -102,7 +134,7 @@ def _standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
                 col_map[lower_to_original[cand_lower]] = canon
                 break
 
-    logger.info("Standardizing columns with map: {}", col_map)
+    logger.info("Standardising columns with map: {}", col_map)
 
     df_std = df.rename(columns=col_map)
 
@@ -126,7 +158,7 @@ def parse_duration_to_minutes(value) -> int:
     Rules:
     - If it's already numeric, clamp to int >= 0.
     - If it's a string containing numbers, return the upper bound of any range.
-      e.g., "20-30 minutes" -> 30
+      e.g. "20-30 minutes" -> 30
     - If no numbers are found, return 0.
     """
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -147,9 +179,9 @@ def parse_duration_to_minutes(value) -> int:
         return 0
 
 
-def _canonicalize_yes_no(value) -> str:
+def _canonicalise_yes_no(value) -> str:
     """
-    Normalize a flag to literal 'Yes' or 'No'.
+    Normalise a flag to literal 'Yes' or 'No'.
 
     Truthy patterns -> 'Yes', everything else -> 'No'.
     """
@@ -171,12 +203,12 @@ def _canonicalize_yes_no(value) -> str:
 
 def parse_test_type_field(value) -> List[str]:
     """
-    Parse the raw test_type / legend field into a list of humanized labels.
+    Parse the raw test_type / legend field into a list of humanised labels.
 
     Mapping rules:
     - 'K' or equivalents -> 'Knowledge & Skills'
     - 'P' or equivalents -> 'Personality & Behavior'
-    - Already-humanized strings are normalized to the canonical forms.
+    - Already-humanised strings are normalised to the canonical forms.
     - Other tokens are kept as-is (trimmed).
     """
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -226,7 +258,7 @@ def build_search_text(
 
     name + ". " + description + ". " + human test_type words + flag hints ('adaptive', 'remote')
 
-    Final text is lowercased and whitespace-normalized.
+    Final text is lowercased and whitespace-normalised.
     """
     name = (name or "").strip()
     description = (description or "").strip()
@@ -256,12 +288,12 @@ def build_search_text(
 
 
 # ---------------------------
-# Catalog normalization
+# Catalog normalisation
 # ---------------------------
 
-def normalize_catalog_df(df_raw: pd.DataFrame) -> pd.DataFrame:
+def normalise_catalog_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     """
-    Main normalization pipeline for the SHL catalog.
+    Main normalisation pipeline for the SHL catalog.
 
     Input: raw DataFrame with unknown column names.
     Output: canonical schema:
@@ -276,13 +308,13 @@ def normalize_catalog_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     - test_type (List[str])
     - search_text (str; lowercased)
     """
-    logger.info("Normalizing catalog dataframe with {} raw rows", len(df_raw))
+    logger.info("Normalising catalog dataframe with {} raw rows", len(df_raw))
 
-    df = _standardize_columns(df_raw.copy())
+    df = _standardise_columns(df_raw.copy())
 
     # Drop rows with empty URL
     if "url" not in df.columns:
-        logger.error("No URL column found after standardization; resulting catalog will be empty.")
+        logger.error("No URL column found after standardisation; resulting catalog will be empty.")
         return pd.DataFrame(
             columns=[
                 "item_id",
@@ -305,7 +337,7 @@ def normalize_catalog_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     df["name"] = df.get("name", "").fillna("").astype(str)
     df["description"] = df.get("description", "").fillna("").astype(str)
 
-    # Clean name/description using shared normalizer (preserve casing for UI)
+    # Clean name/description using shared normaliser (preserve casing for UI)
     df["name_clean"] = df["name"].apply(basic_clean)
     df["description_clean"] = df["description"].apply(basic_clean)
 
@@ -316,8 +348,8 @@ def normalize_catalog_df(df_raw: pd.DataFrame) -> pd.DataFrame:
         df["duration"] = 0
 
     # Flags
-    df["adaptive_support"] = df.get("adaptive_raw", "No").apply(_canonicalize_yes_no)
-    df["remote_support"] = df.get("remote_raw", "No").apply(_canonicalize_yes_no)
+    df["adaptive_support"] = df.get("adaptive_raw", "No").apply(_canonicalise_yes_no)
+    df["remote_support"] = df.get("remote_raw", "No").apply(_canonicalise_yes_no)
 
     # Test type
     if "test_type_raw" in df.columns:
@@ -358,7 +390,7 @@ def normalize_catalog_df(df_raw: pd.DataFrame) -> pd.DataFrame:
 
     df_out.insert(0, "item_id", range(len(df_out)))
 
-    logger.info("Catalog normalization complete. Final rows: {}", len(df_out))
+    logger.info("Catalog normalisation complete. Final rows: {}", len(df_out))
 
     return df_out
 
@@ -371,7 +403,8 @@ def load_raw_catalog(path: Optional[Path] = None) -> pd.DataFrame:
     """
     Load raw catalog data from an Excel file.
 
-    If no path is provided, we take the first .xlsx found under data/catalog_raw.
+    If no path is provided, we take the first .xlsx found under
+    ``data/catalog_raw``.
     """
     if path is None:
         candidates = sorted(CATALOG_RAW_DIR.glob("*.xlsx"))
@@ -393,29 +426,49 @@ def build_catalog_snapshot(
     output_path: Path = CATALOG_SNAPSHOT_PATH,
 ) -> Path:
     """
-    End-to-end: load raw catalog → normalize → write Parquet snapshot.
+    End-to-end: load raw catalog → normalise → write Parquet snapshot.
 
     Returns the output path.
     """
     df_raw = load_raw_catalog(raw_path)
-    df_norm = normalize_catalog_df(df_raw)
+    df_norm = normalise_catalog_df(df_raw)
 
     logger.info("Writing catalog snapshot to {}", output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df_norm.to_parquet(output_path, index=False)
-    logger.info("Catalog snapshot written with {} rows", len(df_norm))
-
+    try:
+        df_norm.to_parquet(output_path, index=False)
+        logger.info("Catalog snapshot written with {} rows", len(df_norm))
+    except Exception as e:
+        # Fallback: write CSV if parquet engines unavailable
+        logger.warning(
+            "Failed to write catalog snapshot as Parquet ({}). Falling back to CSV.", e
+        )
+        csv_path = output_path.with_suffix(".csv")
+        df_norm.to_csv(csv_path, index=False)
+        logger.info("Catalog snapshot written as CSV with {} rows", len(df_norm))
+        return csv_path
     return output_path
 
 
 def load_catalog_snapshot(path: Path = CATALOG_SNAPSHOT_PATH) -> pd.DataFrame:
     """
-    Convenience helper to load the normalized catalog snapshot.
+    Convenience helper to load the normalised catalog snapshot.
     """
     logger.info("Loading catalog snapshot from {}", path)
-    df = pd.read_parquet(path)
-    logger.info("Loaded catalog snapshot with {} rows", len(df))
-    return df
+    try:
+        df = pd.read_parquet(path)
+        logger.info("Loaded catalog snapshot with {} rows", len(df))
+        return df
+    except Exception as e:
+        logger.warning(
+            "Failed to load Parquet snapshot ({}). Trying CSV fallback.", e
+        )
+        csv_path = path.with_suffix(".csv")
+        if not csv_path.exists():
+            raise
+        df = pd.read_csv(csv_path)
+        logger.info("Loaded catalog snapshot (CSV) with {} rows", len(df))
+        return df
 
 
 # ---------------------------
