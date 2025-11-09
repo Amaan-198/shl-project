@@ -64,18 +64,20 @@ def _dedup_preserve_order(seq: List[str]) -> List[str]:
 
 def _predict_for_query(q: str) -> List[str]:
     """
-    Calls the API once and returns canonicalised, deduped URLs
-    in a deterministic order.
+    Calls the in-process API once and returns canonicalised, deduped URLs
+    in rank order (no alphabetical re-sort).
     """
     urls = recommend_single_query(q)
     urls = canon_urls(urls)
-    # de-dup while preserving order, then stable tiebreak by URL for determinism
-    unique = []
+
+    # de-dup while preserving order
+    unique: List[str] = []
     seen = set()
     for u in urls:
-        if u not in seen:
-            seen.add(u); unique.append(u)
-    return sorted(unique, key=lambda x: x)  # deterministic final tie-break
+        if u and u not in seen:
+            seen.add(u)
+            unique.append(u)
+    return unique
 
 
 def write_two_column_csv(preds: Dict[str, List[str]], out_path: Path) -> None:

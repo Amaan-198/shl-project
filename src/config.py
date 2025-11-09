@@ -43,7 +43,7 @@ DENSE_WEIGHT = 0.40
 # IMPORTANT: retrieval should read these values (don’t hardcode in code)
 BM25_TOP_N = 300
 DENSE_TOP_N = 300
-FUSION_TOP_K = 120
+FUSION_TOP_K = 200
 
 FUSION_WINSORIZE_MIN = -3.0
 FUSION_WINSORIZE_MAX = 3.0
@@ -58,8 +58,6 @@ RESULT_MAX = 10
 RESULT_DEFAULT_TARGET = 10  # soft target only
 
 # Duration tolerance used by retrieval / filtering
-# MIN: how much slack we allow around user-stated/implicit durations (minutes)
-# MAX: optional upper guard some pipelines read; keep generous.
 DURATION_TOLERANCE_MIN = 15
 DURATION_TOLERANCE_MAX = 120
 
@@ -107,80 +105,86 @@ SYNONYM_MAP: Dict[str, str] = {
     "digital marketing": "marketing",
     "assistant admin": "administrative assistant",
     "entry-level": "entry level",
+    # extra grads/admin normalisation
+    "new graduates": "entry level",
+    "freshers": "entry level",
 }
+
+
 
 ENABLE_ESCO_AUGMENT = False
 
 # Keyword families / intent markers
 _AI_KEYWORDS = [
-    "ai","artificial intelligence","machine learning","ml","deep learning",
-    "neural network","mlops","model deployment","data science","data scientist",
-    "predictive analytics","computer vision","natural language processing","nlp",
-    "generative ai","llm","chatbot","transformer model",
+    "ai", "artificial intelligence", "machine learning", "ml", "deep learning",
+    "neural network", "mlops", "model deployment", "data science", "data scientist",
+    "predictive analytics", "computer vision", "natural language processing", "nlp",
+    "generative ai", "llm", "chatbot", "transformer model",
 ]
 _PYTHON_KEYWORDS = [
-    "python","pandas","numpy","scikit-learn","sklearn","django","flask","fastapi",
-    "backend","automation","api","scripting","oop","data structures",
+    "python", "pandas", "numpy", "scikit-learn", "sklearn", "django", "flask", "fastapi",
+    "backend", "automation", "api", "scripting", "oop", "data structures",
 ]
 _ANALYTICS_KEYWORDS = [
-    "excel","power bi","tableau","data visualization","data analysis","dashboard",
-    "sql","business analytics","data modeling","reporting","sql server","data warehouse",
-    "statistics","forecasting",
+    "excel", "power bi", "tableau", "data visualization", "data analysis", "dashboard",
+    "sql", "business analytics", "data modeling", "reporting", "sql server", "data warehouse",
+    "statistics", "forecasting",
 ]
 _TECH_KEYWORDS = [
-    "developer","engineer","programmer","software","frontend","backend","fullstack",
-    "cloud","devops","aws","azure","gcp","linux","docker","kubernetes","network",
-    "cybersecurity","qa","testing","automation","integration","ci/cd","microservices",
+    "developer", "engineer", "programmer", "software", "frontend", "backend", "fullstack",
+    "cloud", "devops", "aws", "azure", "gcp", "linux", "docker", "kubernetes", "network",
+    "cybersecurity", "qa", "testing", "automation", "integration", "ci/cd", "microservices",
 ] + [
-    "cloud computing","containers","serverless","cloud security","terraform","sre",
-    "siem","pentest","incident response","iam","zero trust",
+    "cloud computing", "containers", "serverless", "cloud security", "terraform", "sre",
+    "siem", "pentest", "incident response", "iam", "zero trust",
 ]
 
 _FINANCE_KEYWORDS = [
-    "finance","accounting","tax","audit","financial analysis","valuation","budget",
-    "forecasting","treasury","banking","credit risk","financial modeling",
+    "finance", "accounting", "tax", "audit", "financial analysis", "valuation", "budget",
+    "forecasting", "treasury", "banking", "credit risk", "financial modeling",
 ]
 _BUSINESS_KEYWORDS = [
-    "business","operations","project management","strategic","planning","risk management",
-    "supply chain","procurement","marketing","branding","kpi","stakeholder management",
-    "change management","decision making",
+    "business", "operations", "project management", "strategic", "planning", "risk management",
+    "supply chain", "procurement", "marketing", "branding", "kpi", "stakeholder management",
+    "change management", "decision making",
 ]
 _HR_KEYWORDS = [
-    "hr","human resources","recruitment","talent acquisition","employee engagement",
-    "conflict management","leadership","coaching","mentoring","organizational development",
-    "assessment center","psychometrics",
+    "hr", "human resources", "recruitment", "talent acquisition", "employee engagement",
+    "conflict management", "leadership", "coaching", "mentoring", "organizational development",
+    "assessment center", "psychometrics",
 ]
 _SALES_KEYWORDS = [
-    "sales","retail","customer service","negotiation","communication","persuasion",
-    "telemarketing","contact center","crm","business development","account executive",
-    "sales representative","technical sales","lead generation",
+    "sales", "retail", "customer service", "negotiation", "communication", "persuasion",
+    "telemarketing", "contact center", "crm", "business development", "account executive",
+    "sales representative", "technical sales", "lead generation",
 ]
 _APTITUDE_KEYWORDS = [
-    "aptitude","logical reasoning","numerical reasoning","verbal reasoning","abstract reasoning",
-    "diagrammatic reasoning","cognitive","problem solving","critical thinking",
-    "inductive reasoning","deductive reasoning",
+    "aptitude", "logical reasoning", "numerical reasoning", "verbal reasoning", "abstract reasoning",
+    "diagrammatic reasoning", "cognitive", "problem solving", "critical thinking",
+    "inductive reasoning", "deductive reasoning",
 ]
 _BEHAVIOR_KEYWORDS = [
-    "leadership","teamwork","collaboration","communication","adaptability","decision making",
-    "conflict resolution","time management","resilience","interpersonal","personality",
-    "culture fit","values","opq","occupational personality questionnaire","team types",
-    "emotional intelligence","engagement",
+    "leadership", "teamwork", "collaboration", "communication", "adaptability", "decision making",
+    "conflict resolution", "time management", "resilience", "interpersonal", "personality",
+    "culture fit", "values", "opq", "occupational personality questionnaire", "team types",
+    "emotional intelligence", "engagement",
 ]
 
 # triggers
 BEHAVIOUR_TRIGGER_PHRASES: List[str] = [
-    "consultant","consulting","culture fit","cultural fit","right fit","values fit",
-    "io psychologist","industrial psychology","leadership role","executive role","c-suite",
-    "coo ","chief operating officer","senior leadership","people leader",
+    "consultant", "consulting", "culture fit", "cultural fit", "right fit", "values fit",
+    "culturally a right fit",
+    "io psychologist", "industrial psychology", "leadership role", "executive role", "c-suite",
+    "coo ", "chief operating officer", "senior leadership", "people leader",
 ]
 APTITUDE_TRIGGER_PHRASES: List[str] = [
-    "aptitude","reasoning test","numerical test","verbal test","inductive","deductive",
+    "aptitude", "reasoning test", "numerical test", "verbal test", "inductive", "deductive",
     "cognitive ability",
 ]
 COMMUNICATION_TRIGGER_PHRASES: List[str] = [
-    "communication skills","strong communication","excellent communication","written communication",
-    "verbal communication","spoken english","english comprehension","business communication",
-    "email writing","presentation skills","client communication",
+    "communication skills", "strong communication", "excellent communication", "written communication",
+    "verbal communication", "spoken english", "english comprehension", "business communication",
+    "email writing", "presentation skills", "client communication",
 ]
 
 _INTENT_KEYWORDS = {
@@ -195,67 +199,124 @@ _DOMAIN_MARKERS = {
     "ai_ml_data": _AI_KEYWORDS + _ANALYTICS_KEYWORDS,
     "business_finance": _BUSINESS_KEYWORDS + _FINANCE_KEYWORDS,
     "hr_leadership": _HR_KEYWORDS + _BEHAVIOR_KEYWORDS,
-    "sales_service": _SALES_KEYWORDS + ["customer success","account manager"],
+    "sales_service": _SALES_KEYWORDS + ["customer success", "account manager"],
     "aptitude_reasoning": _APTITUDE_KEYWORDS,
-    "cloud_security": ["aws","azure","gcp","kubernetes","docker","terraform","siem","sre"],
+    "cloud_security": ["aws", "azure", "gcp", "kubernetes", "docker", "terraform", "siem", "sre"],
 }
 DOMAIN_MARKERS = _DOMAIN_MARKERS  # public alias
 
-# ---- MAJOR retrieval boosts (new & extended) ----
+# ---- MAJOR retrieval boosts (extended) ----
 RETRIEVAL_BOOST_SEEDS: Dict[str, List[str]] = {
     # personality / leadership staples
-    "opq": ["occupational personality questionnaire","opq32","opq32r","personality questionnaire","personality assessment"],
-    "leadership": ["leadership report","enterprise leadership","manager 8.0","managerial role","leadership styles"],
+    "opq": ["occupational personality questionnaire", "opq32", "opq32r", "personality questionnaire", "personality assessment"],
+    "leadership": ["leadership report", "enterprise leadership", "manager 8.0", "managerial role", "leadership styles"],
     # communication staples
-    "communication": ["business communication","english comprehension","written english","spoken english","verbal ability","email writing"],
+    "communication": ["business communication", "english comprehension", "written english", "spoken english", "verbal ability", "email writing"],
     # sales staples
-    "sales": ["entry level sales","sales representative","technical sales associate","sales sift-out","inside sales"],
+    "sales": ["entry level sales", "sales representative", "technical sales associate", "sales sift-out", "inside sales"],
     # data / sql / excel staples
-    "sql": ["sql server","database","data warehouse","ssis","ssas","ssrs"],
-    "python": ["python developer","data analyst","data analytics","machine learning","pandas","numpy"],
-    # --- NEW targeted intents ---
+    "sql": ["sql server", "database", "data warehouse", "ssis", "ssas", "ssrs"],
+    "python": ["python developer", "data analyst", "data analytics", "machine learning", "pandas", "numpy"],
     # Consultant / I-O Psychology / people science — pull OPQ & Verify batteries
     "consultant": [
-        "occupational personality questionnaire","opq","opq32r",
-        "verify verbal ability next generation","verify numerical ability",
-        "professional 7.1 solution","administrative professional short form",
+        "occupational personality questionnaire", "opq", "opq32r",
+        "verify verbal ability next generation", "verify numerical ability",
+        "professional 7.1 solution", "administrative professional short form",
     ],
     "industrial organizational": [
-        "opq","opq32r","leadership report",
-        "verify verbal ability next generation","verify numerical ability",
+        "opq", "opq32r", "leadership report",
+        "verify verbal ability next generation", "verify numerical ability",
     ],
     # QA / Testing
-    "quality assurance": ["automata selenium","selenium","manual testing","qa engineer","test automation","sql server","javascript","htmlcss","css3"],
-    "qa engineer": ["automata selenium","selenium","manual testing","sql server","javascript","htmlcss","css3"],
+    "quality assurance": ["automata selenium", "selenium", "manual testing", "qa engineer", "test automation", "sql server", "javascript", "htmlcss", "css3"],
+    "qa engineer": ["automata selenium", "selenium", "manual testing", "sql server", "javascript", "htmlcss", "css3"],
     # Marketing / Brand / Community / Events
-    "marketing manager": ["digital advertising","writex email writing sales","business communication","manager 8.0"],
-    "brand": ["digital advertising","marketing","business communication"],
-    "community": ["digital advertising","business communication","presentation","email writing"],
-    "events": ["digital advertising","business communication","presentation"],
+    "marketing manager": ["digital advertising", "writex email writing sales", "business communication", "manager 8.0"],
+    "brand": ["digital advertising", "marketing", "business communication"],
+    "community": ["digital advertising", "business communication", "presentation", "email writing"],
+    "events": ["digital advertising", "business communication", "presentation"],
 }
 
 # Focused expansion library for exact families
 EXPANSION_LIBRARY: Dict[str, List[str]] = {
-    "behavior": ["opq","occupational personality questionnaire","leadership report","interpersonal communications","team types"],
-    "aptitude": ["verify verbal ability next generation","verify numerical ability","shl verify interactive inductive reasoning"],
-    "sales_entry": ["entry level sales solution","interpersonal communications","business communication adaptive","svar spoken english indian accent new"],
-    "qa_testing": ["automata selenium","selenium new","manual testing new","sql server new","javascript new","css3 new","htmlcss new"],
-    "data_analyst": ["automata sql new","python new","microsoft excel 365 new","microsoft excel 365 essentials new","tableau new","sql server analysis services (ssas) (new)"],
-    "java_dev": ["core java entry level new","core java advanced level new","java 8 new","interpersonal communications"],
-    "content_marketing": ["search engine optimization new","written english v1","english comprehension new","digital advertising new"],
-    "admin_ops": ["administrative professional short form","bank administrative assistant short form","general entry level data entry 7.0 solution","verify numerical ability","basic computer literacy windows 10 new"],
-    # --- NEW: explicit for consultant & marketing manager ---
-    "consultant_io": ["opq32r","leadership report","verify verbal ability next generation","verify numerical ability","professional 7.1 solution"],
-    "marketing_mgr": ["digital advertising","writex email writing sales","business communication adaptive","manager 8.0 jfa 4310"],
+    "behavior": ["opq", "occupational personality questionnaire", "leadership report", "interpersonal communications", "team types"],
+    "aptitude": ["verify verbal ability next generation", "verify numerical ability", "shl verify interactive inductive reasoning"],
+    "sales_entry": ["entry level sales solution", "interpersonal communications", "business communication adaptive", "svar spoken english indian accent new"],
+    "qa_testing": ["automata selenium", "selenium new", "manual testing new", "sql server new", "javascript new", "css3 new", "htmlcss new"],
+    "data_analyst": ["automata sql new", "python new", "microsoft excel 365 new", "microsoft excel 365 essentials new", "tableau new", "sql server analysis services (ssas) (new)"],
+    "java_dev": ["core java entry level new", "core java advanced level new", "java 8 new", "interpersonal communications"],
+    "content_marketing": ["search engine optimization new", "written english v1", "english comprehension new", "digital advertising new"],
+    "admin_ops": ["administrative professional short form", "bank administrative assistant short form", "general entry level data entry 7.0 solution", "verify numerical ability", "basic computer literacy windows 10 new"],
+    "consultant_io": ["opq32r", "leadership report", "verify verbal ability next generation", "verify numerical ability", "professional 7.1 solution"],
+    "marketing_mgr": ["digital advertising", "writex email writing sales", "business communication adaptive", "manager 8.0 jfa 4310"],
 }
 
 # SHL tokens
 _SHL_KEYWORDS = [
-    "assessment","solution","verify","professional","short form",
-    "entry level","adaptive","manager","leadership","7.0","7.1","8.0",
-    "automata","technical checking","communication","opq","biodata",
-    "motivation questionnaire","competency","simulation","situational judgment","aptitude test",
+    "assessment", "solution", "verify", "professional", "short form",
+    "entry level", "adaptive", "manager", "leadership", "7.0", "7.1", "8.0",
+    "automata", "technical checking", "communication", "opq", "biodata",
+    "motivation questionnaire", "competency", "simulation", "situational judgment", "aptitude test",
 ]
+
+SYNONYM_MAP.update({
+    "assistant admin": "administrative assistant",
+    "admin assistant": "administrative assistant",
+    "business teams": "stakeholder management",
+    "collaboration": "collaborate",
+    "culturally": "culture fit",
+})
+
+BEHAVIOUR_TRIGGER_PHRASES += [
+    "collaborate", "collaboration", "business teams", "culturally", "brand positioning",
+    "community", "events", "stakeholder", "presentation", "interpersonal",
+]
+
+COMMUNICATION_TRIGGER_PHRASES += [
+    "business teams", "stakeholder", "client-facing", "presentation", "storytelling",
+]
+
+RETRIEVAL_BOOST_SEEDS.update({
+    # Content writer / SEO (make sure Drupal can surface)
+    "content_marketing": [
+        "search engine optimization", "written english", "english comprehension",
+        "writex email writing", "drupal",
+    ],
+    # Admin / banking ops
+    "admin_ops": [
+        "administrative professional short form", "bank administrative assistant short form",
+        "general entry level data entry 7.0 solution", "basic computer literacy windows 10",
+        "verify numerical ability",
+    ],
+    # Sales entry-level guardrails
+    "sales_entry": [
+        "entry level sales solution", "entry level sales sift-out 7.1",
+        "sales representative solution", "interpersonal communications",
+        "business communication adaptive", "svar spoken english indian accent",
+    ],
+    # Marketing manager
+    "marketing manager": [
+        "digital advertising", "writex email writing sales",
+        "business communication adaptive", "manager 8.0",
+    ],
+})
+
+EXPANSION_LIBRARY.update({
+    "sales_entry": [
+        "entry level sales 7.1", "entry-level sales sift-out 7.1",
+        "sales representative solution", "technical sales associate solution",
+        "interpersonal communications", "business communication adaptive",
+        "svar spoken english indian accent (new)",
+    ],
+    "consultant": [
+        "opq32r", "opq leadership report", "verify verbal ability next generation",
+        "verify numerical ability", "professional 7.1 solution",
+        "administrative professional short form",
+    ],
+    "marketing": ["digital advertising", "marketing", "business communication", "manager 8.0"],
+})
+
+
 _TECH_KEYWORDS += _SHL_KEYWORDS
 _DOMAIN_MARKERS["shl_general"] = _SHL_KEYWORDS
 
@@ -268,11 +329,13 @@ _SLUG_FAMILY_PATTERNS = [
     (re.compile(r"-\d+\.\d+$"), ""),
 ]
 def family_slug(slug: str) -> str:
-    if not isinstance(slug, str): return ""
+    if not isinstance(slug, str):
+        return ""
     s = slug.strip().lower().strip("/")
-    s = s.replace("%28","(").replace("%29",")").replace("_","-")
+    s = s.replace("%28", "(").replace("%29", ")").replace("_", "-")
     s = re.sub(r"-+", "-", s)
-    for pat, repl in _SLUG_FAMILY_PATTERNS: s = pat.sub(repl, s).rstrip("-").strip()
+    for pat, repl in _SLUG_FAMILY_PATTERNS:
+        s = pat.sub(repl, s).rstrip("-").strip()
     return s
 
 # HTTP hardening
@@ -314,12 +377,16 @@ class AssessmentItem(BaseModel):
     adaptive_support: str
     remote_support: str
     test_type: List[str]
+
     def ensure_flags_are_literal(self) -> None:
         self.adaptive_support = "Yes" if self.adaptive_support == "Yes" else "No"
-        self.remote_support  = "Yes" if self.remote_support  == "Yes" else "No"
+        self.remote_support = "Yes" if self.remote_support == "Yes" else "No"
+
 
 class RecommendResponse(BaseModel):
     recommended_assessments: List[AssessmentItem]
 
+
 class HealthResponse(BaseModel):
     status: str
+
